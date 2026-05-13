@@ -1,0 +1,2 @@
+environment:
+  - qyne-infra/secrets

@@ -6,9 +6,8 @@ import * as tls from "@pulumi/tls";
 // Configuration
 // ---------------------------------------------------------------------------
 const config = new pulumi.Config();
-const location = config.get("location") || "hel1";         // Helsinki (CX43 available, ~$16/mo)
-const serverType = config.get("serverType") || "cx43";     // 8 vCPU, 16 GB RAM, Gen3 Cost-Optimized
-const volumeSize = config.getNumber("volumeSize") || 100;  // GB for PostgreSQL data
+const location = config.get("location") || "hel1";         // Helsinki (CX43 available, ~€16/mo)
+const serverType = config.get("serverType") || "cx43";     // 8 vCPU, 16 GB RAM, 160 GB NVMe
 
 // ---------------------------------------------------------------------------
 // SSH Key
@@ -36,7 +35,7 @@ const subnet = new hcloud.NetworkSubnet("nova-subnet", {
 });
 
 // ---------------------------------------------------------------------------
-// Cloud-init: Docker + Dokploy
+// Cloud-init: Docker + Dokploy + Data Directories
 // ---------------------------------------------------------------------------
 const cloudInit = `#cloud-config
 package_update: true
@@ -46,25 +45,11 @@ packages:
   - jq
   - unattended-upgrades
 
-# Mount the block storage volume at /mnt/storage
-mounts:
-  - ["/dev/disk/by-id/scsi-0HC_Volume_nova-volume", "/mnt/storage", "ext4", "discard,nofail,defaults", "0", "2"]
-
 runcmd:
-  # Create mount point
-  - mkdir -p /mnt/storage
-
-  # Format volume if not already formatted
-  - |
-    if ! blkid /dev/disk/by-id/scsi-0HC_Volume_nova-volume; then
-      mkfs.ext4 -L nova-data /dev/disk/by-id/scsi-0HC_Volume_nova-volume
-    fi
-  - mount -a
-
-  # Create PostgreSQL data directories on block storage
-  - mkdir -p /mnt/storage/pg-nova
-  - mkdir -p /mnt/storage/pg-agno
-  - mkdir -p /mnt/storage/backups
+  # Create Nova data directories on the server NVMe disk
+  - mkdir -p /var/lib/nova/pg-nova
+  - mkdir -p /var/lib/nova/pg-agno
+  - mkdir -p /var/lib/nova/backups
 
   # Install Docker
   - curl -fsSL https://get.docker.com | sh
@@ -76,7 +61,7 @@ runcmd:
 `;
 
 // ---------------------------------------------------------------------------
-// Server: Nova CX42
+// Server: Nova CX43 (8 vCPU, 16 GB RAM, 160 GB NVMe)
 // ---------------------------------------------------------------------------
 const server = new hcloud.Server("nova-server", {
     serverType: serverType,
@@ -94,22 +79,6 @@ const server = new hcloud.Server("nova-server", {
 }, {
     dependsOn: [subnet],
     ignoreChanges: ["userData"],
-});
-
-// ---------------------------------------------------------------------------
-// Block Storage Volume (PostgreSQL data)
-// ---------------------------------------------------------------------------
-const volume = new hcloud.Volume("nova-volume", {
-    size: volumeSize,
-    location: location,
-    format: "ext4",
-    deleteProtection: true,
-});
-
-const volumeAttachment = new hcloud.VolumeAttachment("nova-volume-attachment", {
-    volumeId: volume.id.apply((id) => parseInt(id)),
-    serverId: server.id.apply((id) => parseInt(id)),
-    automount: true,
 });
 
 // ---------------------------------------------------------------------------
@@ -155,5 +124,4 @@ export const serverStatus = server.status;
 export const serverPrivateIp = "10.0.1.10";
 export const sshPrivateKey = pulumi.secret(sshKeypair.privateKeyOpenssh);
 export const dokployUrl = pulumi.interpolate`http://${server.ipv4Address}:3000`;
-export const volumeId = volume.id;
 export const networkId = network.id;

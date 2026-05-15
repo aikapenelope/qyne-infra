@@ -56,7 +56,19 @@ runcmd:
   - mkdir -p /var/lib/nova/pg-agno
   - mkdir -p /var/lib/nova/backups
 
-  # Configure fail2ban for SSH brute-force protection
+  # --- SSH Hardening ---
+  - |
+    cat > /etc/ssh/sshd_config.d/99-hardening.conf << 'EOF'
+    PasswordAuthentication no
+    PermitRootLogin prohibit-password
+    MaxAuthTries 3
+    LoginGraceTime 30
+    PermitEmptyPasswords no
+    X11Forwarding no
+    EOF
+  - systemctl reload ssh || systemctl reload sshd || true
+
+  # --- fail2ban ---
   - |
     cat > /etc/fail2ban/jail.local << 'EOF'
     [sshd]
@@ -69,6 +81,30 @@ runcmd:
     EOF
   - systemctl enable fail2ban
   - systemctl restart fail2ban
+
+  # --- Kernel Hardening ---
+  - |
+    cat > /etc/sysctl.d/99-nova-hardening.conf << 'EOF'
+    net.ipv4.conf.all.send_redirects = 0
+    net.ipv4.conf.default.send_redirects = 0
+    net.ipv6.conf.all.accept_redirects = 0
+    net.ipv6.conf.default.accept_redirects = 0
+    net.ipv4.icmp_echo_ignore_broadcasts = 1
+    net.ipv4.conf.all.log_martians = 1
+    EOF
+  - sysctl --system
+
+  # --- Docker Log Rotation ---
+  - |
+    cat > /etc/docker/daemon.json << 'EOF'
+    {
+      "log-driver": "json-file",
+      "log-opts": {
+        "max-size": "10m",
+        "max-file": "3"
+      }
+    }
+    EOF
 
   # Install Docker
   - curl -fsSL https://get.docker.com | sh

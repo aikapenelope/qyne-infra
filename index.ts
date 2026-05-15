@@ -106,6 +106,10 @@ runcmd:
     }
     EOF
 
+  # Install Tailscale (VPN mesh for secure admin access)
+  # After install, run 'tailscale up' manually to authenticate
+  - curl -fsSL https://tailscale.com/install.sh | sh
+
   # Install Docker
   - curl -fsSL https://get.docker.com | sh
 

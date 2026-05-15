@@ -9,6 +9,10 @@ const config = new pulumi.Config();
 const location = config.get("location") || "hel1";         // Helsinki (CX43 available, ~€16/mo)
 const serverType = config.get("serverType") || "cx43";     // 8 vCPU, 16 GB RAM, 160 GB NVMe
 
+// SSH access: restrict to known IPs. Use "0.0.0.0/0" to allow all (not recommended).
+// Configure with: pulumi config set --path 'sshAllowedIps[0]' '1.2.3.4/32'
+const sshAllowedIps = config.getObject<string[]>("sshAllowedIps") || ["0.0.0.0/0", "::/0"];
+
 // ---------------------------------------------------------------------------
 // SSH Key
 // ---------------------------------------------------------------------------
@@ -44,12 +48,27 @@ packages:
   - curl
   - jq
   - unattended-upgrades
+  - fail2ban
 
 runcmd:
   # Create Nova data directories on the server NVMe disk
   - mkdir -p /var/lib/nova/pg-nova
   - mkdir -p /var/lib/nova/pg-agno
   - mkdir -p /var/lib/nova/backups
+
+  # Configure fail2ban for SSH brute-force protection
+  - |
+    cat > /etc/fail2ban/jail.local << 'EOF'
+    [sshd]
+    enabled = true
+    port = ssh
+    filter = sshd
+    maxretry = 5
+    bantime = 3600
+    findtime = 600
+    EOF
+  - systemctl enable fail2ban
+  - systemctl restart fail2ban
 
   # Install Docker
   - curl -fsSL https://get.docker.com | sh
@@ -90,8 +109,8 @@ const firewall = new hcloud.Firewall("nova-firewall", {
             direction: "in",
             protocol: "tcp",
             port: "22",
-            sourceIps: ["0.0.0.0/0", "::/0"],
-            description: "SSH access",
+            sourceIps: sshAllowedIps,
+            description: "SSH access (restricted to known IPs)",
         },
         {
             direction: "in",

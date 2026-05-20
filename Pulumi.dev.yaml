@@ -1,2 +1,4 @@
 environment:
   - qyne-infra/secrets
+config:
+  qyne-infra:deleteProtection: "false"

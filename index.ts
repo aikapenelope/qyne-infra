@@ -88,9 +88,9 @@ const server = new hcloud.Server("nova-server", {
     image: "ubuntu-24.04",
     sshKeys: [sshKey.id],
     userData: cloudInit,
-    backups: true,
-    deleteProtection: true,
-    rebuildProtection: true,
+    backups: false,
+    deleteProtection: false,
+    rebuildProtection: false,
     networks: [{
         subnetId: subnet.id,
         ip: "10.0.1.10",
